@@ -1,4 +1,5 @@
 // start OSC config
+import controlP5.*;
 import oscP5.*;
 import netP5.*;
 import java.util.regex.*;
@@ -20,11 +21,17 @@ Integer fps;
 
 //Service staff
 //==============================
+ControlP5 cp5;
 OscP5 oscP5;
+Textlabel columnNum;
+Textlabel deckNum;
 NetAddress myRemoteLocation;
 OscBundle myBundle;
 OscMessage myMessage;
 int column = 0;
+int deck = 1;
+Pattern p_col = Pattern.compile("^/track([0-9]+)/select$");
+Pattern p_deck = Pattern.compile("^/composition/deck([0-9]+)/select$");
 //==============================
 
 void settings() {
@@ -60,6 +67,34 @@ void setup() {
 	surface.setAlwaysOnTop(true);
 	//setup OSC communication
 	oscP5 = new OscP5(this,port_in);
+	//setup UI
+	cp5 = new ControlP5(this);
+	//Next column BTN
+	cp5.addButton("next_col")
+		.setPosition(int(2*glob_width/3), int(glob_height/3 + 1))
+		.setSize(int(glob_width/3), int(2*glob_height/3));
+	//Prev colomn BTN
+	cp5.addButton("prev_col")
+		.setPosition(1, int(glob_height/3 + 1))
+		.setSize(int(glob_width/3), int(2*glob_height/3));
+	//Next deck BTN
+	cp5.addButton("next_deck")
+		.setPosition(int(2*glob_width/3), 0)
+		.setSize(int(glob_width/3), int(glob_height/3));
+	//Prev deck BTN
+	cp5.addButton("prev_deck")
+		.setPosition(1, 0)
+		.setSize(int(glob_width/3), int(glob_height/3));
+	//Labels
+	columnNum = cp5.addTextlabel("colNum")
+					.setText("-init-")
+					.setFont(createFont("Arial",int(glob_height*0.2)))
+					.setPosition(int(glob_width*0.45), int(glob_height*.55));
+	deckNum = cp5.addTextlabel("deckNum")
+					.setText("-init-")
+					.setFont(createFont("Arial",int(glob_height*0.2)))
+					.setPosition(int(glob_width*0.45), int(glob_height*0.05));
+	//Inet stuff
 	myRemoteLocation = new NetAddress(dst_ip, port_out);  
 	myBundle = new OscBundle();
 	myMessage = new OscMessage("/");  
@@ -67,41 +102,41 @@ void setup() {
 
 
 void draw() {
-	//limit column to max numbers
-	background(32);
-	fill(64,64,64);
-	noStroke();
-	rect(width/2, 0, width/2, height);
-	stroke(255);
+	//Update lables
+	columnNum.setText(str(column));
+	deckNum.setText(str(deck));
 	//if we lose focus, draw red
 	if(!focused) {
-		fill(255,0,0,200);
-		noStroke();
-		rect(0,0,width,height);
-	}
-	noStroke();
-	fill(128,128);
-	rect(width/2 - 30 ,height/2 - 20, 60, 40);
-	fill(255,255);
-	textSize(25);
-	if (column <10 ) {
-		text(str(column), width/2 - 8, height/2 + 8);
+		background(220,32,32);
 	} else {
-		text(str(column), width/2 - 15, height/2 + 8);
+		background(0,0,32);
 	}
-	
 }
 
-
-void mouseReleased() {
-	if(mouseX > width/2) {
-		column++;
-	} else {
-		column--;
-	}
+//controller block
+//++++++++++++++++++++++++
+public void next_col() {
+	column++;
 	send_col();
 }
 
+public void prev_col() {
+	column--;
+	send_col();
+}
+
+public void next_deck() {
+	deck++;
+	column = 0;
+	send_deck();
+}
+
+public void prev_deck() {
+	deck--;
+	column = 0;
+	send_deck();
+}
+//++++++++++++++++++++++++
 
 void keyPressed() {
 	if (key == CODED) {
@@ -127,7 +162,17 @@ void keyPressed() {
 				break;
 			case '[':
 				column--;
-				send_col(); 
+				send_col();
+				break;
+			case '{':
+				deck--;
+				column = 0;
+				send_deck();
+				break;
+			case '}':
+				deck++;
+				column = 0;
+				send_deck();
 				break;
 			}
 	}
@@ -135,6 +180,7 @@ void keyPressed() {
 
 
 void send_col() {
+	//limit column numbers
 	column = constrain(column, 0, 99);
 	String address = ("/track"+column+"/connect/");
 	if(column == 0){
@@ -149,12 +195,28 @@ void send_col() {
 }
 
 
+void send_deck() {
+	//limit deck numbers
+	deck = constrain(deck, 1, 99);
+	String address = ("/composition/deck"+deck+"/select");
+	myMessage.setAddrPattern(address);
+	myMessage.add(1);
+	myBundle.add(myMessage);
+	myMessage.clear();
+	oscP5.send(myBundle, myRemoteLocation); 
+	myBundle.clear();
+}
+
+
 void oscEvent(OscMessage theOscMessage) {
 	String oscMsg = theOscMessage.addrPattern();
-	Pattern p_col = Pattern.compile("^/track([0-9]+)/select$");
 	Matcher m_col = p_col.matcher(oscMsg);
+	Matcher m_deck = p_deck.matcher(oscMsg);
 	if (m_col.matches()) {
 		column = Integer.parseInt(m_col.group(1));
+	}
+	if (m_deck.matches()) {
+		deck = Integer.parseInt(m_col.group(1));
 	}
 	if(theOscMessage.addrPattern().equals("/composition/disconnectall"))
 		column = 0;
